@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FileDrop — Transfert P2P</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --border: #1e1e2e;
+    --accent: #00ff9d;
+    --accent2: #ff6b35;
+    --text: #e8e8f0;
+    --muted: #5a5a7a;
+    --glow: rgba(0,255,157,0.15);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Syne', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    overflow-x: hidden;
+  }
+
+  /* Background grid */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,255,157,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,255,157,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  header {
+    width: 100%;
+    max-width: 960px;
+    padding: 40px 24px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .logo {
+    font-family: 'Space Mono', monospace;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -1px;
+    color: var(--accent);
+    text-shadow: 0 0 20px var(--accent);
+  }
+
+  .logo span { color: var(--text); }
+
+  .tagline {
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-left: auto;
+    font-family: 'Space Mono', monospace;
+  }
+
+  main {
+    width: 100%;
+    max-width: 960px;
+    padding: 0 24px 60px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Mode selector */
+  .mode-selector {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 32px;
+  }
+
+  .mode-btn {
+    padding: 20px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--muted);
+    cursor: pointer;
+    font-family: 'Syne', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .mode-btn::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--glow);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .mode-btn:hover::after, .mode-btn.active::after { opacity: 1; }
+
+  .mode-btn.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    box-shadow: 0 0 20px var(--glow), inset 0 0 20px var(--glow);
+  }
+
+  .mode-btn .icon {
+    display: block;
+    font-size: 28px;
+    margin-bottom: 8px;
+  }
+
+  /* Panels */
+  .panel {
+    display: none;
+    animation: fadeIn 0.3s ease;
+  }
+  .panel.active { display: block; }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Card */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 32px;
+    margin-bottom: 16px;
+  }
+
+  .card-title {
+    font-size: 11px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .card-title::before {
+    content: '';
+    display: inline-block;
+    width: 20px;
+    height: 1px;
+    background: var(--accent);
+  }
+
+  /* Step indicator */
+  .steps {
+    display: flex;
+    gap: 0;
+    margin-bottom: 32px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  .step {
+    flex: 1;
+    padding: 12px 16px;
+    font-size: 11px;
+    font-family: 'Space Mono', monospace;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-right: 1px solid var(--border);
+    transition: all 0.3s;
+    text-align: center;
+  }
+  .step:last-child { border-right: none; }
+  .step.active { color: var(--accent); background: rgba(0,255,157,0.05); }
+  .step.done { color: var(--muted); background: rgba(0,255,157,0.03); }
+  .step.done::before { content: '✓ '; }
+
+  /* Drop zone */
+  .dropzone {
+    border: 2px dashed var(--border);
+    padding: 48px 32px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+  }
+
+  .dropzone:hover, .dropzone.dragover {
+    border-color: var(--accent);
+    background: var(--glow);
+  }
+
+  .dropzone input[type="file"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+    height: 100%;
+  }
+
+  .dropzone-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+    display: block;
+  }
+
+  .dropzone-text {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+
+  .dropzone-sub {
+    font-size: 13px;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+  }
+
+  /* File info */
+  .file-info {
+    display: none;
+    align-items: center;
+    gap: 16px;
+    padding: 20px;
+    border: 1px solid var(--accent);
+    background: rgba(0,255,157,0.05);
+    margin-bottom: 16px;
+  }
+  .file-info.visible { display: flex; }
+
+  .file-icon { font-size: 32px; }
+
+  .file-details { flex: 1; }
+  .file-name {
+    font-weight: 700;
+    font-size: 15px;
+    margin-bottom: 4px;
+    word-break: break-all;
+  }
+  .file-size {
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    color: var(--accent);
+  }
+
+  /* Inputs */
+  input[type="text"], textarea {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 14px 16px;
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.2s;
+    resize: none;
+  }
+
+  input[type="text"]:focus, textarea:focus {
+    border-color: var(--accent);
+  }
+
+  textarea { height: 100px; }
+
+  /* Code display */
+  .code-box {
+    background: var(--bg);
+    border: 1px solid var(--accent);
+    padding: 20px;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    word-break: break-all;
+    color: var(--accent);
+    position: relative;
+    max-height: 120px;
+    overflow-y: auto;
+    line-height: 1.6;
+  }
+
+  .copy-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: var(--accent);
+    color: var(--bg);
+    border: none;
+    padding: 6px 12px;
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    transition: opacity 0.2s;
+  }
+  .copy-btn:hover { opacity: 0.8; }
+
+  /* Buttons */
+  .btn {
+    padding: 16px 32px;
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: var(--bg);
+  }
+  .btn-primary:hover { box-shadow: 0 0 24px var(--glow); }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn-secondary {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .btn-secondary:hover { border-color: var(--text); }
+
+  .btn-full { width: 100%; }
+
+  /* Status */
+  .status {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 18px;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    border: 1px solid;
+    margin-top: 16px;
+  }
+  .status.info { border-color: var(--muted); color: var(--muted); }
+  .status.success { border-color: var(--accent); color: var(--accent); background: rgba(0,255,157,0.05); }
+  .status.error { border-color: var(--accent2); color: var(--accent2); background: rgba(255,107,53,0.05); }
+  .status.warning { border-color: #ffd700; color: #ffd700; }
+
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
+    animation: pulse 1.5s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+  .status.success .dot, .status.error .dot { animation: none; }
+
+  /* Progress */
+  .progress-wrap {
+    margin-top: 20px;
+    display: none;
+  }
+  .progress-wrap.visible { display: block; }
+  .progress-label {
+    display: flex;
+    justify-content: space-between;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .progress-bar {
+    height: 4px;
+    background: var(--border);
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: var(--accent);
+    width: 0%;
+    transition: width 0.3s;
+    box-shadow: 0 0 8px var(--accent);
+  }
+
+  /* Connection animation */
+  .connection-visual {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 32px;
+    margin: 16px 0;
+  }
+  .node {
+    width: 48px; height: 48px;
+    border: 2px solid var(--accent);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    box-shadow: 0 0 16px var(--glow);
+  }
+  .line {
+    flex: 1;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--accent));
+    background-size: 200% 100%;
+    position: relative;
+    overflow: hidden;
+  }
+  .line::after {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%;
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, #fff, transparent);
+    animation: flow 1.5s infinite;
+  }
+  @keyframes flow {
+    to { left: 200%; }
+  }
+
+  /* Helper text */
+  .helper {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    margin-top: 8px;
+    line-height: 1.6;
+  }
+
+  .divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 24px 0;
+  }
+
+  /* Download button */
+  .download-ready {
+    display: none;
+    padding: 32px;
+    text-align: center;
+    border: 1px solid var(--accent);
+    background: rgba(0,255,157,0.03);
+    margin-top: 16px;
+  }
+  .download-ready.visible { display: block; }
+  .download-ready h3 {
+    font-size: 24px;
+    color: var(--accent);
+    margin-bottom: 8px;
+  }
+  .download-ready p {
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    margin-bottom: 24px;
+  }
+
+  .label {
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    display: block;
+    margin-bottom: 8px;
+  }
+
+  .row { display: flex; gap: 12px; margin-top: 16px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">File<span>Drop</span></div>
+  <div class="tagline">Transfert P2P direct</div>
+</header>
+
+<main>
+
+  <div class="mode-selector">
+    <button class="mode-btn active" id="btnSender" onclick="setMode('sender')">
+      <span class="icon">📤</span>
+      J'envoie un fichier
+    </button>
+    <button class="mode-btn" id="btnReceiver" onclick="setMode('receiver')">
+      <span class="icon">📥</span>
+      Je reçois un fichier
+    </button>
+  </div>
+
+  <!-- ═══════════════ SENDER PANEL ═══════════════ -->
+  <div class="panel active" id="senderPanel">
+
+    <div class="steps" id="senderSteps">
+      <div class="step active" id="ss1">1 · Fichier</div>
+      <div class="step" id="ss2">2 · Code receveur</div>
+      <div class="step" id="ss3">3 · Mon offre</div>
+      <div class="step" id="ss4">4 · Connexion</div>
+    </div>
+
+    <!-- Step 1: Select file -->
+    <div id="senderStep1">
+      <div class="card">
+        <div class="card-title">Sélectionner un fichier</div>
+        <div class="dropzone" id="dropzone">
+          <input type="file" id="fileInput" onchange="onFileSelected(this)">
+          <span class="dropzone-icon">📁</span>
+          <div class="dropzone-text">Glisser ou cliquer pour choisir</div>
+          <div class="dropzone-sub">Tous formats · Taille illimitée</div>
+        </div>
+      </div>
+
+      <div class="file-info" id="fileInfo">
+        <div class="file-icon" id="fileIcon">📄</div>
+        <div class="file-details">
+          <div class="file-name" id="fileName">—</div>
+          <div class="file-size" id="fileSize">—</div>
+        </div>
+      </div>
+
+      <button class="btn btn-primary btn-full" id="btnNext1" onclick="senderGoStep2()" disabled>
+        Continuer →
+      </button>
+    </div>
+
+    <!-- Step 2: Enter receiver code -->
+    <div id="senderStep2" style="display:none">
+      <div class="card">
+        <div class="card-title">Code du destinataire</div>
+        <p class="helper" style="margin-bottom:16px">Le destinataire doit ouvrir ce site, cliquer sur "Je reçois" et générer son code. Il vous l'envoie (SMS, chat…) et vous le collez ici.</p>
+        <label class="label">Code reçu</label>
+        <textarea id="receiverCodeInput" placeholder="Coller le code du destinataire ici…"></textarea>
+        <div class="row">
+          <button class="btn btn-secondary" onclick="senderGoStep1()">← Retour</button>
+          <button class="btn btn-primary" style="flex:1" onclick="senderProcessReceiverCode()">Créer la connexion →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3: Share offer -->
+    <div id="senderStep3" style="display:none">
+      <div class="card">
+        <div class="card-title">Mon code d'offre</div>
+        <p class="helper" style="margin-bottom:16px">Copiez ce code et envoyez-le au destinataire. Il devra le coller dans son interface pour finaliser la connexion.</p>
+        <label class="label">Votre code à partager</label>
+        <div class="code-box" id="senderOfferBox">
+          Génération en cours…
+          <button class="copy-btn" onclick="copyText('senderOfferBox')">COPIER</button>
+        </div>
+        <div class="status info" id="senderWaitStatus">
+          <div class="dot"></div>
+          En attente que le destinataire confirme…
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 4: Transfer -->
+    <div id="senderStep4" style="display:none">
+      <div class="card">
+        <div class="card-title">Transfert</div>
+        <div class="connection-visual">
+          <div class="node">💻</div>
+          <div class="line"></div>
+          <div class="node">🖥️</div>
+        </div>
+        <div class="status success" id="connectedStatus">
+          <div class="dot"></div>
+          <span id="connectedText">Connexion établie — en attente du téléchargement</span>
+        </div>
+        <div class="progress-wrap" id="senderProgress">
+          <div class="progress-label">
+            <span>Envoi en cours…</span>
+            <span id="senderPercent">0%</span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill" id="senderFill"></div></div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /senderPanel -->
+
+  <!-- ═══════════════ RECEIVER PANEL ═══════════════ -->
+  <div class="panel" id="receiverPanel">
+
+    <div class="steps" id="receiverSteps">
+      <div class="step active" id="rs1">1 · Mon code</div>
+      <div class="step" id="rs2">2 · Code envoyeur</div>
+      <div class="step" id="rs3">3 · Téléchargement</div>
+    </div>
+
+    <!-- Step 1: Generate code -->
+    <div id="receiverStep1">
+      <div class="card">
+        <div class="card-title">Générer mon code de réception</div>
+        <p class="helper" style="margin-bottom:24px">Cliquez sur le bouton pour générer votre code. Envoyez ce code à l'expéditeur (par SMS, chat, email…).</p>
+        <button class="btn btn-primary btn-full" onclick="receiverGenerate()">Générer mon code →</button>
+      </div>
+
+      <div id="receiverCodeDisplay" style="display:none">
+        <div class="card">
+          <div class="card-title">Mon code (à envoyer à l'expéditeur)</div>
+          <div class="code-box" id="receiverOfferBox">
+            <button class="copy-btn" onclick="copyText('receiverOfferBox')">COPIER</button>
+          </div>
+          <div class="status info" style="margin-top:16px">
+            <div class="dot"></div>
+            Envoyez ce code à l'expéditeur, puis continuez
+          </div>
+          <div class="row" style="margin-top:16px">
+            <button class="btn btn-primary btn-full" onclick="receiverGoStep2()">J'ai envoyé mon code →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2: Enter sender offer -->
+    <div id="receiverStep2" style="display:none">
+      <div class="card">
+        <div class="card-title">Code de l'expéditeur</div>
+        <p class="helper" style="margin-bottom:16px">L'expéditeur vous a envoyé son code d'offre. Collez-le ici pour établir la connexion.</p>
+        <label class="label">Code de l'expéditeur</label>
+        <textarea id="senderOfferInput" placeholder="Coller le code de l'expéditeur ici…"></textarea>
+        <div class="row">
+          <button class="btn btn-secondary" onclick="receiverGoStep1()">← Retour</button>
+          <button class="btn btn-primary" style="flex:1" onclick="receiverConnect()">Se connecter →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3: Download -->
+    <div id="receiverStep3" style="display:none">
+      <div class="card">
+        <div class="card-title">Connexion & téléchargement</div>
+        <div class="status info" id="receiverStatus">
+          <div class="dot"></div>
+          Connexion en cours…
+        </div>
+
+        <div class="download-ready" id="downloadReady">
+          <h3>✓ Fichier reçu !</h3>
+          <p id="downloadFileName">—</p>
+          <button class="btn btn-primary" id="downloadBtn">Télécharger le fichier</button>
+        </div>
+
+        <div class="progress-wrap" id="receiverProgress">
+          <div class="progress-label">
+            <span>Réception en cours…</span>
+            <span id="receiverPercent">0%</span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill" id="receiverFill"></div></div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /receiverPanel -->
+
+</main>
+
+<script>
+// ══════════════════════════════════════════════
+//  WebRTC P2P File Transfer
+// ══════════════════════════════════════════════
+
+const ICE_SERVERS = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+];
+
+const CHUNK_SIZE = 16384; // 16KB
+
+let pc = null;       // RTCPeerConnection
+let dc = null;       // RTCDataChannel
+let selectedFile = null;
+let receiverOffer = null;  // stored for receiver side
+
+// ── UI helpers ──────────────────────────────
+
+function setMode(mode) {
+  document.getElementById('senderPanel').classList.toggle('active', mode === 'sender');
+  document.getElementById('receiverPanel').classList.toggle('active', mode === 'receiver');
+  document.getElementById('btnSender').classList.toggle('active', mode === 'sender');
+  document.getElementById('btnReceiver').classList.toggle('active', mode === 'receiver');
+}
+
+function showSenderStep(n) {
+  [1,2,3,4].forEach(i => {
+    document.getElementById(`senderStep${i}`).style.display = i === n ? 'block' : 'none';
+    const s = document.getElementById(`ss${i}`);
+    s.className = 'step' + (i === n ? ' active' : i < n ? ' done' : '');
+  });
+}
+
+function showReceiverStep(n) {
+  [1,2,3].forEach(i => {
+    document.getElementById(`receiverStep${i}`).style.display = i === n ? 'block' : 'none';
+    const s = document.getElementById(`rs${i}`);
+    s.className = 'step' + (i === n ? ' active' : i < n ? ' done' : '');
+  });
+}
+
+function getFileIcon(name) {
+  const ext = name.split('.').pop().toLowerCase();
+  const map = { pdf:'📄', zip:'🗜️', rar:'🗜️', mp4:'🎬', mkv:'🎬', mp3:'🎵', wav:'🎵',
+    jpg:'🖼️', jpeg:'🖼️', png:'🖼️', gif:'🖼️', doc:'📝', docx:'📝', xls:'📊', xlsx:'📊',
+    ppt:'📋', pptx:'📋', txt:'📃', js:'💻', py:'🐍', html:'🌐', exe:'⚙️' };
+  return map[ext] || '📁';
+}
+
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + ' o';
+  if (bytes < 1048576) return (bytes/1024).toFixed(1) + ' Ko';
+  if (bytes < 1073741824) return (bytes/1048576).toFixed(1) + ' Mo';
+  return (bytes/1073741824).toFixed(1) + ' Go';
+}
+
+function copyText(boxId) {
+  const txt = document.getElementById(boxId).innerText.replace('COPIER','').trim();
+  navigator.clipboard.writeText(txt).then(() => {
+    const btn = document.querySelector(`#${boxId} .copy-btn`);
+    btn.textContent = 'COPIÉ !';
+    setTimeout(() => btn.textContent = 'COPIER', 2000);
+  });
+}
+
+function compress(str) { return btoa(str); }
+function decompress(str) { return atob(str); }
+
+// ── Drag & drop ─────────────────────────────
+
+const dz = document.getElementById('dropzone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('dragover');
+  if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+
+function onFileSelected(input) { if (input.files.length) handleFile(input.files[0]); }
+
+function handleFile(file) {
+  selectedFile = file;
+  document.getElementById('fileIcon').textContent = getFileIcon(file.name);
+  document.getElementById('fileName').textContent = file.name;
+  document.getElementById('fileSize').textContent = formatSize(file.size);
+  document.getElementById('fileInfo').classList.add('visible');
+  document.getElementById('btnNext1').disabled = false;
+}
+
+// ══════════════════════════════════════════════
+//  SENDER FLOW
+// ══════════════════════════════════════════════
+
+function senderGoStep1() { showSenderStep(1); if (pc) { pc.close(); pc = null; } }
+function senderGoStep2() { showSenderStep(2); }
+
+async function senderProcessReceiverCode() {
+  const rawCode = document.getElementById('receiverCodeInput').value.trim();
+  if (!rawCode) return alert('Veuillez coller le code du destinataire.');
+
+  let receiverData;
+  try { receiverData = JSON.parse(decompress(rawCode)); }
+  catch(e) { alert('Code invalide ou corrompu.'); return; }
+
+  showSenderStep(3);
+  document.getElementById('senderOfferBox').innerHTML = 'Génération…<button class="copy-btn" onclick="copyText(\'senderOfferBox\')">COPIER</button>';
+
+  pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+
+  dc = pc.createDataChannel('filedrop');
+  setupSenderDataChannel(dc);
+
+  // Set remote description (receiver's offer)
+  await pc.setRemoteDescription(new RTCSessionDescription(receiverData.sdp));
+
+  // Add ICE candidates from receiver
+  if (receiverData.ice) {
+    for (const c of receiverData.ice) await pc.addIceCandidate(new RTCIceCandidate(c));
+  }
+
+  // Create answer
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+
+  // Collect ICE candidates
+  const iceCandidates = [];
+  await new Promise(resolve => {
+    pc.onicecandidate = e => {
+      if (e.candidate) { iceCandidates.push(e.candidate.toJSON()); }
+      else resolve();
+    };
+    pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === 'complete') resolve(); };
+    setTimeout(resolve, 5000);
+  });
+
+  const payload = { sdp: pc.localDescription, ice: iceCandidates,
+    fileInfo: { name: selectedFile.name, size: selectedFile.size, type: selectedFile.type } };
+  const code = compress(JSON.stringify(payload));
+
+  document.getElementById('senderOfferBox').innerHTML =
+    code + '<button class="copy-btn" onclick="copyText(\'senderOfferBox\')">COPIER</button>';
+}
+
+function setupSenderDataChannel(channel) {
+  channel.onopen = () => {
+    showSenderStep(4);
+    document.getElementById('connectedText').textContent =
+      `Connecté — En attente du téléchargement de "${selectedFile.name}"`;
+  };
+
+  channel.onmessage = e => {
+    if (e.data === 'START') sendFile();
+  };
+}
+
+function sendFile() {
+  const reader = new FileReader();
+  let offset = 0;
+  const total = selectedFile.size;
+
+  // Send metadata first
+  dc.send(JSON.stringify({ type: 'meta', name: selectedFile.name, size: total, mime: selectedFile.type }));
+
+  document.getElementById('senderProgress').classList.add('visible');
+
+  function sendChunk() {
+    if (offset >= total) {
+      dc.send(JSON.stringify({ type: 'done' }));
+      document.getElementById('connectedText').textContent = '✓ Fichier envoyé avec succès !';
+      return;
+    }
+    const slice = selectedFile.slice(offset, offset + CHUNK_SIZE);
+    reader.readAsArrayBuffer(slice);
+  }
+
+  reader.onload = e => {
+    if (dc.bufferedAmount > CHUNK_SIZE * 8) {
+      setTimeout(() => { reader.onload(e); }, 50);
+      return;
+    }
+    dc.send(e.target.result);
+    offset += e.target.result.byteLength;
+    const pct = Math.round(offset / total * 100);
+    document.getElementById('senderFill').style.width = pct + '%';
+    document.getElementById('senderPercent').textContent = pct + '%';
+    sendChunk();
+  };
+
+  sendChunk();
+}
+
+// ══════════════════════════════════════════════
+//  RECEIVER FLOW
+// ══════════════════════════════════════════════
+
+async function receiverGenerate() {
+  pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+
+  const iceCandidates = [];
+
+  // Create offer
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+
+  await new Promise(resolve => {
+    pc.onicecandidate = e => {
+      if (e.candidate) iceCandidates.push(e.candidate.toJSON());
+      else resolve();
+    };
+    pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === 'complete') resolve(); };
+    setTimeout(resolve, 5000);
+  });
+
+  const payload = { sdp: pc.localDescription, ice: iceCandidates };
+  const code = compress(JSON.stringify(payload));
+  receiverOffer = { pc, iceCandidates };
+
+  document.getElementById('receiverOfferBox').innerHTML =
+    code + '<button class="copy-btn" onclick="copyText(\'receiverOfferBox\')">COPIER</button>';
+  document.getElementById('receiverCodeDisplay').style.display = 'block';
+}
+
+function receiverGoStep1() { showReceiverStep(1); }
+function receiverGoStep2() { showReceiverStep(2); }
+
+async function receiverConnect() {
+  const raw = document.getElementById('senderOfferInput').value.trim();
+  if (!raw) { alert('Veuillez coller le code de l\'expéditeur.'); return; }
+
+  let senderData;
+  try { senderData = JSON.parse(decompress(raw)); }
+  catch(e) { alert('Code invalide ou corrompu.'); return; }
+
+  showReceiverStep(3);
+
+  const { pc: rpc } = receiverOffer;
+
+  // Set remote description (sender's answer)
+  await rpc.setRemoteDescription(new RTCSessionDescription(senderData.sdp));
+  if (senderData.ice) {
+    for (const c of senderData.ice) await rpc.addIceCandidate(new RTCIceCandidate(c));
+  }
+
+  // Handle data channel
+  rpc.ondatachannel = e => {
+    const channel = e.channel;
+    setupReceiverDataChannel(channel);
+  };
+
+  document.getElementById('receiverStatus').innerHTML =
+    '<div class="dot"></div>Connexion en cours…';
+
+  // Check connection state
+  rpc.onconnectionstatechange = () => {
+    if (rpc.connectionState === 'connected') {
+      document.getElementById('receiverStatus').className = 'status success';
+      document.getElementById('receiverStatus').innerHTML =
+        '<div class="dot"></div>Connecté à l\'expéditeur !';
+    } else if (rpc.connectionState === 'failed') {
+      document.getElementById('receiverStatus').className = 'status error';
+      document.getElementById('receiverStatus').innerHTML =
+        '<div class="dot"></div>Connexion échouée. Vérifiez les codes et réessayez.';
+    }
+  };
+}
+
+function setupReceiverDataChannel(channel) {
+  const chunks = [];
+  let meta = null;
+  let received = 0;
+
+  channel.onopen = () => {
+    document.getElementById('receiverStatus').className = 'status success';
+    document.getElementById('receiverStatus').innerHTML =
+      '<div class="dot"></div>Canal ouvert — demande du fichier…';
+    channel.send('START');
+  };
+
+  channel.onmessage = e => {
+    if (typeof e.data === 'string') {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'meta') {
+        meta = msg;
+        document.getElementById('receiverProgress').classList.add('visible');
+        document.getElementById('receiverStatus').innerHTML =
+          `<div class="dot"></div>Réception de "${meta.name}" (${formatSize(meta.size)})…`;
+      } else if (msg.type === 'done') {
+        const blob = new Blob(chunks, { type: meta?.mime || 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
+        document.getElementById('downloadBtn').onclick = () => {
+          const a = document.createElement('a');
+          a.href = url; a.download = meta.name; a.click();
+        };
+        document.getElementById('downloadFileName').textContent = `${meta.name} · ${formatSize(meta.size)}`;
+        document.getElementById('downloadReady').classList.add('visible');
+        document.getElementById('receiverStatus').className = 'status success';
+        document.getElementById('receiverStatus').innerHTML =
+          '<div class="dot"></div>✓ Transfert terminé !';
+      }
+    } else {
+      // Binary chunk
+      chunks.push(e.data);
+      received += e.data.byteLength;
+      if (meta) {
+        const pct = Math.round(received / meta.size * 100);
+        document.getElementById('receiverFill').style.width = pct + '%';
+        document.getElementById('receiverPercent').textContent = pct + '%';
+      }
+    }
+  };
+}
+</script>
+</body>
+</html>
